@@ -1,0 +1,63 @@
+#include <SPI.h>
+#include <RH_RF95.h>
+
+#define RFM95_CS    10    // NSS (CS)
+#define RFM95_RST    9    // RESET
+#define RFM95_DIO0   2    // DIO0 (IRQ)
+
+#define RF95_FREQ 868.0
+#define MODEM_CFG RH_RF95::Bw125Cr45Sf128  // BW125, CR4/5, SF7
+
+RH_RF95 rf95(RFM95_CS, RFM95_DIO0);
+
+static void hardReset() {
+  pinMode(RFM95_RST, OUTPUT);
+  digitalWrite(RFM95_RST, LOW);
+  delay(10);
+  digitalWrite(RFM95_RST, HIGH);
+  delay(10);
+}
+
+void setup() {
+  Serial.begin(9600);
+  while (!Serial) {}
+
+  Serial.println(F("LoRa Receiver (RH_RF95)"));
+  hardReset();
+
+  if (!rf95.init()) {
+    Serial.println(F("RF95 init failed"));
+    while (1);
+  }
+
+  if (!rf95.setFrequency(RF95_FREQ)) {
+    Serial.println(F("setFrequency failed"));
+    while (1);
+  }
+
+  rf95.setModemConfig(MODEM_CFG);   // BW=125kHz, CR=4/5, SF=7
+
+  rf95.setPromiscuous(true);       
+  rf95.setTxPower(13, false);
+
+  Serial.println(F("LoRa ready, listening..."));
+}
+
+void loop() {
+  if (rf95.available()) {
+    uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
+    uint8_t len = sizeof(buf);
+
+    if (rf95.recv(buf, &len)) {
+      if (len >= RH_RF95_MAX_MESSAGE_LEN) len = RH_RF95_MAX_MESSAGE_LEN - 1;
+      buf[len] = 0; // null-terminate
+
+      Serial.print("MSG: ");
+      Serial.println((char*)buf);
+
+      const char ack[] = "ACK";
+      rf95.send((uint8_t*)ack, sizeof(ack) - 1);
+      rf95.waitPacketSent();
+    }
+  }
+}
